@@ -1,0 +1,190 @@
+POGING 4 IS DE WERKENDE VERSIE
+#--------------------------------------------------------Poging 4------------------------------------------------------------------#
+    allObjPoints = []
+    allImgPoints = []
+    
+    objPoints = []
+    # print("len(markerCornersPerSurface[0]): " + str(len(markerCornersPerSurface[0])))
+    # Hier moet ik nog maken wat er moet gebeuren als er maar 1 vlak gevonden word
+    if len(markerCornersPerSurface) == 1:
+        # Als er maar 1 hoek van 1 vlak gedetecteerd word kan ik niet tracken
+        if len(markerCornersPerSurface[0]) in range(0, 2):
+            return None
+    
+        # Eerst weten welk vlak
+        surfaceCorners = markerCornersPerSurface[0]
+        surfaceIds = markerIdsPerSurface[0]
+
+        # Neem de objPoints en zorg ervoor dat die in het midden ligt -> ongeveer predicten hoe die moet staan van diepte
+        objPointsIndex = int(surfaceIds[0]/10)
+        objPoints = objectPoints[objPointsIndex].copy()
+        
+        # Logica maken om te weten welke lengte ik + of - moet doen
+        b = 0.39 # = x (in meter)
+        h = 0.13 # = z (in meter)
+        d = 0.275 # = y (in meter)
+        boxSize = [b, d, h]
+
+        zeroIndex = None
+        for i in range(len(objPoints[0][0])):
+            if all(subarray[i] == 0 for subarray in objPoints[0]):
+                zeroIndex = i
+
+        if zeroIndex is not None:
+            # TODO dit klopt nog niet helemaal want nu doe ik alle waarden + en niet alleen de waardes die ik + moet doen...
+            for cornerObjPoints in objPoints:
+                for objPoint in cornerObjPoints:
+                    objPoint[zeroIndex] += boxSize[zeroIndex]/2
+                    # pass
+        else:
+            return None
+
+    index = 0
+    print("markerIdsPerSurface: " + str(markerIdsPerSurface))
+    for surfaceCorners in markerCornersPerSurface:
+        if len(surfaceCorners) in range(0, 2):
+            index += 1
+            continue
+
+        if len(objPoints) == 0:
+            objPoints = objectPoints[index]
+
+        surfaceIds = markerIdsPerSurface[index]
+        print("surfaceIds: " + str(surfaceIds))
+        # Hier kan ik nog iets schrijven dat die eerst probeert te predicten en dat ik dan moet die punten verder kan werken
+        predictedCoords = []
+        if len(surfaceCorners) in range(2, 4):
+            # Als er maar 2 corners gevonden worden proberen een predictie maken van de andere 2 om een betere totale positie schatting te krijgen
+            imgPoints = []
+            for corners in surfaceCorners:
+                # print("corner[0]: " + str(corners[0]))
+                for corner in corners[0]:
+                    imgPoints.append(corner)
+            imgPoints = np.array(imgPoints)
+
+            test = []
+            for id in surfaceIds:
+                print("id: " + str(id))
+                objPointIndex = id - (int(id/10)*10) - 1
+                print("objPointIndex: " + str(objPointIndex))
+                print("objPoints[objPointIndex]: " + str(objPoints[objPointIndex[0]]))
+                for objPoint in objPoints[objPointIndex][0]:
+                    test.append(objPoint)
+            test = np.array(test)
+
+            retval, rvecs, tvec = cv.solvePnP(test, imgPoints, cameraMatrix, distCoeffs)
+            # print("retval: " + str(retval))
+            if retval:
+                predictedCoords = predictCorners(rvecs, tvec, surfaceIds, objPoints)
+                # print("predictedCoords: " + str(predictedCoords))
+        
+        idRange = int(surfaceIds[0]/10)*10
+        # Alle obj en img points in de lijsten en dezelfde volgorde zetten
+        allSurfaceIds = [idRange+1, idRange+2, idRange+3, idRange+4]
+        detectedIndex = 0
+        predictedIndex = 0
+        for id in allSurfaceIds:
+            cornerIndex = id - idRange - 1
+            allObjPoints.append(objPoints[cornerIndex][cornerIndex])
+
+            if id in surfaceIds:
+                allImgPoints.append(surfaceCorners[detectedIndex][0][cornerIndex])
+                detectedIndex += 1
+            else:
+                # print("predictedIndex: " + str(predictedIndex))
+                allImgPoints.append(convertTo2DCoord(predictedCoords[predictedIndex], cameraMatrix, distCoeffs))
+                predictedIndex += 1
+        
+        index += 1
+
+    allObjPoints = np.array(allObjPoints)
+    allImgPoints = np.array(allImgPoints)
+
+    # print("len(allObjPoints): " + str(len(allObjPoints)) + "\nallObjPoints: " + str(allObjPoints))
+    # print("len(allImgPoints): " + str(len(allImgPoints)) + "\nallImgPoints: " + str(allImgPoints))
+    
+    if len(allImgPoints) < 3 or len(allObjPoints) < 3:
+        return None
+    
+    print("allObjPoints: " + str(allObjPoints))
+    print("allImgPoints: " + str(allImgPoints))
+
+    transformationMatrix = calculateTransformationMatrix(allObjPoints, allImgPoints, cameraMatrix, distCoeffs)
+    print("transformationMatrix:\n" + str(transformationMatrix))
+    return transformationMatrix
+
+POGING 3 IS DE OUDE WERKENDE VERSIE
+#--------------------------------------------------------Poging 3------------------------------------------------------------------#
+index = 0
+for surfaceCorners in markerCornersPerSurface:
+    if len(surfaceCorners) < 2 or len(surfaceCorners) >= 4:
+        index += 1
+        continue
+    
+    # Haal de juiste objectPoints uit de lijst van objectPoints per surface op basis van de ids
+    surfaceIds = markerIdsPerSurface[index]
+    objPointsIndex = int(surfaceIds[0]/10)
+    objPoints = objectPoints[objPointsIndex]
+
+    predictedCoords = []
+    for i in range(len(surfaceIds)):
+        indexById = (surfaceIds[i] - int(surfaceIds[i]/10)*10 - 1)[0]
+        retval, rvecs, tvec = cv.solvePnP(objPoints[indexById], surfaceCorners[i], cameraMatrix, distCoeffs)
+        if retval:
+            # Reken surfaceCorners[0] om naar een 3D coordinaat
+            predictedCoords.append(predictCorners(rvecs, tvec, surfaceIds, objPoints))
+            # print("test: " + str(predictCorners(rvecs, tvec, surfaceIds, objPoints)))
+
+    predictedCoords = np.array(predictedCoords)
+    # print("predictedCoords: " + str(predictedCoords))
+    for i in range(4-len(surfaceIds)):
+        predictedCoord = np.mean(predictedCoords[:, i], axis=0)
+        # print("predictedCoord: " + str(predictedCoord))
+        img = draw3DPoints(img, predictedCoord, cameraMatrix, distCoeffs, (0, 255, 255))
+
+    index += 1
+
+return img
+
+
+
+HIERONDER STAAN NIET WERKENDE VERSIES
+#--------------------------------------------------------Poging 1------------------------------------------------------------------#
+Dit is mijn oude code, is niet super accuraat met tracken van doos
+if markerIds is not None and len(markerIds) >= 4:
+    # retval, rvecs, tvecs = cv.solvePnP(objPoints, markerCorners, cameraMatrix, distCoeffs, flags=cv.SOLVEPNP_IPPE)
+    rvecs, tvecs, _ = cv.aruco.estimatePoseSingleMarkers(markerCorners, 0.015, cameraMatrix, distCoeffs)
+    if rvecs is not None and tvecs is not None:
+        rvecAvg = np.mean(rvecs, axis=0)
+        tvecAvg = np.mean(tvecs, axis=0)[0]
+
+        rotationMatrix, _ = cv.Rodrigues(rvecAvg)
+        return rotationMatrix, tvecAvg
+else:
+    return None, None
+
+#--------------------------------------------------------Poging 2------------------------------------------------------------------#
+rotationMatrices = []
+tvecs = []
+for surfaceCorners in markerCornersPerSurface:
+    rvecsSurface, tvecsSurface, _ = cv.aruco.estimatePoseSingleMarkers(surfaceCorners, 0.015, cameraMatrix, distCoeffs)
+    if rvecsSurface is not None and tvecsSurface is not None:
+        rvecSurfaceAvg = np.mean(rvecsSurface, axis=0)
+        tvecSurfaceAvg = np.mean(tvecsSurface, axis=0)[0]
+
+        rotationMatrix, _ = cv.Rodrigues(rvecSurfaceAvg)
+        rotationMatrices.append(rotationMatrix)
+        tvecs.append(tvecSurfaceAvg)
+
+quaternionSurfaces = []
+for rotMatrix in rotationMatrices:
+    quaternionSurface = cv.RQDecomp3x3(rotMatrix)[1]
+    quaternionSurfaces.append(quaternionSurface)
+
+quaternionAvg = np.mean(quaternionSurfaces, axis=0)
+norm = np.linalg.norm(quaternionAvg)
+combinedRotationMatrix = quaternionAvg / norm
+
+tvecsAvg = np.mean(tvecs, axis=0)
+
+return combinedRotationMatrix, tvecsAvg
