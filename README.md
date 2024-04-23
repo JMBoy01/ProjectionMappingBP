@@ -15,4 +15,11 @@
 | 14-03-2024 | Vertalen met prediction afgewerkt en werkende, geeft soms inconsistente resultaten -> (morgen) vragen wat ik hier aan kan doen? |
 | 20-03-2024 | Verder gekeken naar kalmanfilter, werkt nog niet. Joni ging er ook eens naar kijken, of vragen aan Nick wanneer mogelijk. Begonnen aan camera projector kalibratie, nog geen code, eerst researchen. |
 | 21-03-2024 | Verder research gedaan naar kalibratie, 2 methodes gevonden vergelijken en beslissen welke implementeren. |
-| 26-03-2024 | Meeting + beslist om graycode methode te gebruiken omwille van afgelopen les en taak 2. |
+| 26-03-2024 | Meeting + beslist om ray plane intersect te gebruiken omwille van mogelijke onnauwkeurigheid (als ik het zelf doe) van de graycode methode uit afgelopen les en taak 2. |
+| 27-03-2024 | Verder research gedaan naar hoe kalibratie code werkt, begonnen aan de implementatie van ray plane intersect. |
+| 28-03-2024 | Verder gewerkt aan ray plane intersect implementatie. |
+| 17-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Het werkt niet ;( |
+| 18-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Het werkt niet ;( |
+| 19-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Het werkt niet ;( |
+| 22-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Extrensieke parameters werken bijna... |
+| 23-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Extrensieke parameters zijn correct! Gecontroleerd met visualisatie die ik geschreven heb. |

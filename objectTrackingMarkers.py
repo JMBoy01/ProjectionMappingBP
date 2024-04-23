@@ -279,6 +279,8 @@ def initKalmanFilter():
     kalman.measurementNoiseCov = np.eye(nMeasurements) * 1e-4  # set measurement noise
     kalman.errorCovPost = np.eye(nStates) * 1  # error covariance
 
+    # transitionMatrix eerst nog eens proberen met eye
+
     # DYNAMIC MODEL
     # [1 0 0 dt 0 0 dt2 0 0 0 0 0 0 0 0 0 0 0]
     # [0 1 0 0 dt 0 0 dt2 0 0 0 0 0 0 0 0 0 0]
@@ -321,7 +323,7 @@ def initKalmanFilter():
     kalman.transitionMatrix[10, 16] = 0.5 * dt**2
     kalman.transitionMatrix[11, 17] = 0.5 * dt**2
 
-    # MEASUREMENT MODEL
+    # MEASUREMENT MODEL, hoe hard vertrouwd ge u echte metingen -> laag = goed, hoog = slecht
     # [1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
     # [0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
     # [0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
@@ -357,6 +359,8 @@ def useKalmanFilter(transformationMatrix, kalman):
     estimated = kalman.correct(measurements)
     
     print("kalman_corrected_state: " + str(estimated))
+
+    # euler vervangen door quaternion, als ge pos quat meegeeft aan kalman -> altijd pos quat meegeven!
 
     tvecEstimated = np.array([estimated[0], estimated[1], estimated[2]])
     eulerEstimated = np.array([estimated[9], estimated[10], estimated[11]])
