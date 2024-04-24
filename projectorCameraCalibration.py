@@ -60,6 +60,10 @@ def makeInitCirclePattern(charucoDetector):
 
     patternImg = np.zeros((1080, 1920))
     for i in range(0, len(charucoCorners), 2):
+        skips = [6, 20, 34]
+        if i in skips:
+            continue
+    
         patternImg = cv.circle(patternImg, charucoCorners[i][0], 75, 255, -1)
         # print(boardObjPoints[i])
         circleObjPoints.append(boardObjPoints[i])
@@ -83,6 +87,10 @@ def makeInitCirclePattern(charucoDetector):
 
     circleCenters = []
     for i in range(0, len(charucoCorners), 2):
+        skips = [6, 20, 34]
+        if i in skips:
+            continue
+
         corner = charucoCorners[i][0]/scaleFactor
         circleCenters.append([int(corner[0] + x), int(corner[1] + y)])
 
@@ -146,19 +154,32 @@ def calculateTransfMatCamProj(centersCam, centersProj, cameraMatrix):
         print("No centers found...")
         return None
 
-def drawDetectedCircles(img):
-    # img = cv.medianBlur(img, 9)
-    # img = cv.GaussianBlur(img, (15, 15), 1)
+def detectAndDrawCirclesPatternFind(img, blobDetector):
+    patternSize = (3, 5) # 3 horizontaal, 5 vertical mag 1 schuin geteld worden
+    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    _, binary = cv.threshold(gray, 200, 255, cv.THRESH_BINARY)
+    # kleine blur om de randen minder scherp en pixelated te maken
+    binary = cv.GaussianBlur(binary, (3, 3), 1)
+
+    patternWasFound, centersCam = cv.findCirclesGrid(binary, patternSize, flags=(cv.CALIB_CB_ASYMMETRIC_GRID + cv.CALIB_CB_CLUSTERING), blobDetector=blobDetector)
+    
+    img = cv.drawChessboardCorners(img, patternSize, centersCam, patternWasFound)
+
+    if patternWasFound:
+        centersCam = [point[0] for point in centersCam]
+        return img, binary, centersCam
+    else:
+        return img, binary, None
+
+def detectAndDrawCirclesPatternHough(img):
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     _, binary = cv.threshold(gray, 200, 255, cv.THRESH_BINARY)
     binary = cv.GaussianBlur(binary, (7, 7), 2)
     circles = cv.HoughCircles(binary, cv.HOUGH_GRADIENT, 1, 3, param1=50, param2=30, minRadius=0, maxRadius=15)
-    # _, centersCam = cv.findCirclesGrid(binary, (8, 6), cv.CALIB_CB_ASYMMETRIC_GRID)
 
     centersCam = []
     if circles is not None:
         circles = np.uint16(np.around(circles))
-
         circles_sorted = sorted(circles[0], key=lambda c: (c[1], c[0]))
 
         # Debug print
@@ -169,17 +190,14 @@ def drawDetectedCircles(img):
         for circle in circles_sorted:
             x, y, radius = circle
 
-            # draw the outer circle
+            # draw the outer and circle + number
             cv.circle(img, (x, y), radius, (0,255,0), 2)
-            # draw the center of the circle
             cv.circle(img, (x, y), 0, (0,0,255), 3)
             cv.putText(img, str(count), (x, y), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv.LINE_AA)
+
             centersCam.append([x, y])
 
             count += 1
-
-        # Sort points
-        # centersCam = sorted(centersCam, key=lambda p: (p[1], p[0]))
 
         return img, binary, centersCam
     else:
@@ -250,8 +268,40 @@ def visualizeCamProj(essMatCamProj, centersCam, centersProj, cameraMatrix):
     ax.set_zlabel('Z')
     plt.show()
 
+def askCirclePatternDetectionMethod():
+    while True:
+        print("What algorithm do you want to use?")
+        print("(1) findCirclesGrid [STABLE, RECOMMENDED]")
+        print("(2) HoughCircles [UNSTABLE]")
+        method = input("Type the number of the algorithm you want to use: ")
+        if method == '1':
+            print("Method: findCirclesGrid")
+            break
+        elif method == '2':
+            print("Method: HoughCircles")
+            break
+        else:
+            print("Invalid input...")
+
+    return method
+
+def initBlobDetector():
+    params = cv.SimpleBlobDetector_Params()
+    params.blobColor = 255 # 0 = zwart, 255 = wit
+    params.filterByColor = True
+    params.filterByArea = True
+    params.minCircularity = 0.5
+    params.minDistBetweenBlobs = 5
+    params.filterByCircularity = True
+    params.filterByConvexity = False
+    params.filterByInertia = False
+    params.collectContours = True
+
+    blobDetector = cv.SimpleBlobDetector_create(params)
+    return blobDetector
+
 def main():
-    cap = cv.VideoCapture(1)
+    cap = cv.VideoCapture(0)
     # succes, img = cap.read()
 
     boardPhoto = cv.imread("board.jpg")
@@ -272,11 +322,20 @@ def main():
 
     patternImg, objPoints, centersProj = makeInitCirclePattern(charucoDetector)
 
+    method = askCirclePatternDetectionMethod()
+
+    blobDetector = initBlobDetector()
+
     img = None
     print("Press enter when you are ready...")
     while True:
         _, img = cap.read()
-        img, binary, centersCam = drawDetectedCircles(img.copy())
+
+        if method == '1':
+            img, binary, centersCam = detectAndDrawCirclesPatternFind(img.copy(), blobDetector)
+        elif method == '2':
+            img, binary, centersCam = detectAndDrawCirclesPatternHough(img.copy())
+        
         cv.imshow("camera - press ENTER when you are ready", img)
         cv.imshow("binary", binary)
 

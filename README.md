@@ -22,4 +22,5 @@
 | 18-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Het werkt niet ;( |
 | 19-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Het werkt niet ;( |
 | 22-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Extrensieke parameters werken bijna... |
-| 23-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Extrensieke parameters zijn correct! Gecontroleerd met visualisatie die ik geschreven heb. |
+| 23-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Extrensieke parameters zijn correct, maar detectie is nog instabiel. Gecontroleerd met visualisatie die ik geschreven heb. |
+| 24-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Extrensieke parameters zijn correct en stabiel! Gecontroleerd met visualisatie. |
