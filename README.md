@@ -24,3 +24,5 @@
 | 22-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Extrensieke parameters werken bijna... |
 | 23-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Extrensieke parameters zijn correct, maar detectie is nog instabiel. Gecontroleerd met visualisatie die ik geschreven heb. |
 | 24-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Extrensieke parameters zijn correct en stabiel! Gecontroleerd met visualisatie. |
+| 25-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Geprobeerd om dynamische kalibratie te gebruiken om intrinsieke parameters van projector te bepalen, nog niet gelukt. |
+| 26-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Veranderd naar statische kalibratie voor de intrinsieke parameters te bepalen aangezien camera en projector ook blijven staan op hun plek. |

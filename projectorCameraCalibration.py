@@ -68,6 +68,8 @@ def makeInitCirclePattern(charucoDetector):
         # print(boardObjPoints[i])
         circleObjPoints.append(boardObjPoints[i])
 
+    # cv.imwrite("patternImg.jpg", patternImg)
+
     patternImg = cv.resize(patternImg, (int(patternImg.shape[1]/scaleFactor), int(patternImg.shape[0]/scaleFactor)))
 
     # plt.imshow(patternImg)
@@ -101,12 +103,34 @@ def makeInitCirclePattern(charucoDetector):
     return img, np.array(circleObjPoints, dtype=np.float32), circleCenters
 
 def getCalibrationSurfacePose(charucoDetector, img, cameraMatrix, distCoeffs):
-    charucoImgPoints, _, _, _  = charucoDetector.detectBoard(img)
+    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    charucoImgPoints, charucoIds, _, _  = charucoDetector.detectBoard(gray)
+    if charucoIds is None:
+        return None
 
     board = charucoDetector.getBoard()
-    objPoints = board.getChessboardCorners()
+    allObjPoints = board.getChessboardCorners()
+    objPoints = []
 
-    retval, rvecs, tvec = cv.solvePnP(objPoints, charucoImgPoints, cameraMatrix, distCoeffs)
+    for id in charucoIds:
+        objPoints.append(allObjPoints[id])
+
+    # Debug prints
+    # print("objPoints:")
+    # print(objPoints)
+    # print("charucoImgPoints:")
+    # print(charucoImgPoints)
+    # print("len(objPoints):")
+    # print(len(objPoints))
+    # print("charucoIds:")
+    # print(charucoIds)
+    # print("len(charucoImgPoints):")
+    # print(len(charucoImgPoints))
+
+    if len(charucoIds) < 4:
+        return None
+
+    retval, rvecs, tvec = cv.solvePnP(np.array(objPoints, dtype=np.float32), np.array(charucoImgPoints, dtype=np.float32), cameraMatrix, distCoeffs)
     if retval:
         transformationMatrix = constructTransformationMatrix(rvecs, tvec)
         return transformationMatrix
@@ -127,11 +151,16 @@ def constructTransformationMatrix(R, tvec):
     transformationMatrix[3] = [0, 0, 0, 1]
     return transformationMatrix
 
+def decomposeTransformationMatrix(transfMat):
+    R = transfMat[:3, :3]
+    T = transfMat[:3, 3]
+    return R, T
+
 def saveCharucoBoard(board, size, filename):
     generatedBoardImg = board.generateImage(size)
     cv.imwrite(filename, generatedBoardImg)
 
-def calculateTransfMatCamProj(centersCam, centersProj, cameraMatrix):
+def calculateEssMatCamProj(centersCam, centersProj, cameraMatrix):
     # Debug prints
     # print("centersProj:")
     # print(centersProj)
@@ -143,16 +172,29 @@ def calculateTransfMatCamProj(centersCam, centersProj, cameraMatrix):
     if len(centersCam) or centersCam is not None:
         essMatCamProj, _ = cv.findEssentialMat(np.array(centersCam, dtype=np.float32), np.array(centersProj, dtype=np.float32), cameraMatrix, method=cv.RANSAC, prob=.99999, threshold=.1)
         if essMatCamProj is not None:
+            # Debug prints
             print("essMatCamProj:")
             print(essMatCamProj)
-            visualizeCamProj(essMatCamProj, centersCam, centersProj, cameraMatrix)
-            return essMatCamProj
+            
+            retval, R, T, _ = cv.recoverPose(essMatCamProj, np.array(centersCam, dtype=np.float32), np.array(centersProj, dtype=np.float32), cameraMatrix)
+            if not retval:
+                print("Wasn't able to recover pose...")
+                return essMatCamProj, None
+            transfMatCamProj = constructTransformationMatrix(R, T)
+
+            # Debug prints
+            print("trasnfMatCamProj:")
+            print(transfMatCamProj)
+
+            visualizeCamProj(R, T, centersCam, centersProj, cameraMatrix)
+
+            return essMatCamProj, transfMatCamProj
         else:
             print("No return value for stereoCalibrate...")
-            return None
+            return None, None
     else:
         print("No centers found...")
-        return None
+        return None, None
 
 def detectAndDrawCirclesPatternFind(img, blobDetector):
     patternSize = (3, 5) # 3 horizontaal, 5 vertical mag 1 schuin geteld worden
@@ -203,17 +245,8 @@ def detectAndDrawCirclesPatternHough(img):
     else:
         return img, binary, None
 
-def visualizeCamProj(essMatCamProj, centersCam, centersProj, cameraMatrix):
-    retval, R, T, _ = cv.recoverPose(essMatCamProj, np.array(centersCam, dtype=np.float32), np.array(centersProj, dtype=np.float32), cameraMatrix)
-    if not retval:
-        print("Wasn't able to recover pose...")
-        return
-    
+def visualizeCamProj(R, T, centersCam, centersProj, cameraMatrix):
     transfMatCamProj = constructTransformationMatrix(R, T)
-
-    # Debug prints
-    print("trasnfMatCamProj:")
-    print(transfMatCamProj)
 
     camPos = np.array([0, 0, 0], dtype=np.float32)
     
@@ -300,8 +333,70 @@ def initBlobDetector():
     blobDetector = cv.SimpleBlobDetector_create(params)
     return blobDetector
 
+def makeMaskDynamicCal(img, patternImg, objPoints, transfMat, essMat, cameraMatrix, distCoeffs):
+    R, T = decomposeTransformationMatrix(transfMat)
+    imgPoints, _ = cv.projectPoints(np.array(objPoints), R, T, cameraMatrix, distCoeffs)
+
+    # Debug prints
+    print("imagePoints:")
+    print(imgPoints)
+
+    mask = np.zeros((img.shape[0], img.shape[1]))
+    mask = cv.fillConvexPoly(mask, np.array(imgPoints, dtype=np.int32), 255)
+
+    x, y, w, h = cv.boundingRect(np.array(imgPoints, dtype=np.int32))
+    patternImg = cv.warpPerspective(patternImg, R, (w, h))
+
+    mask_8u = mask.astype(np.uint8)
+    mask_rgb = cv.cvtColor(mask_8u, cv.COLOR_GRAY2BGR)
+
+    # Debug prints
+    print("mask_rgb.shape:")
+    print(mask_rgb.shape)
+    print("patternImg.shape:")
+    print(patternImg.shape)
+
+    # cv.copyTo(patternImg, mask_rgb[y:y+h, x:x+w])
+
+    return mask
+
+    # Convert img to proj space
+    # maskHom = cv.convertPointsToHomogeneous(maskHom)
+    # maskProjHom = essMat @ maskHom
+    # maskProj = cv.convertPointsFromHomogeneous(maskProjHom)
+
+    # return maskProj
+
+def getCalPatternObjPts(charucoDetector):
+    board = charucoDetector.getBoard()
+    boardObjPoints = board.getChessboardCorners()
+
+    minX = min(p[0] for p in boardObjPoints)
+    minY = min(p[1] for p in boardObjPoints)
+    maxX = max(p[0] for p in boardObjPoints)
+    maxY = max(p[1] for p in boardObjPoints)
+
+    deltaX = maxX + 2 * minX
+    deltaY = maxY + 2 * minY
+
+    objPoints = [[0, deltaY + minY, 0], [deltaX, deltaY + minY, 0], [deltaX, 2*deltaY + minY, 0], [0, 2*deltaY + minY, 0]]
+
+    # Debug prints
+    print("calPatternObjPts:")
+    print(objPoints)
+
+    return objPoints
+
+def saveProjCalibration(filename, projMatrix, projDistCoeffs):
+    fs = cv.FileStorage(filename, cv.FILE_STORAGE_WRITE)
+    fs.write("projMatrix", projMatrix)
+    fs.write("projDistCoeffs", projDistCoeffs)
+
+    fs.release()
+    print("Calibratiegegevens opgeslagen in", filename)
+
 def main():
-    cap = cv.VideoCapture(0)
+    cap = cv.VideoCapture(2)
     # succes, img = cap.read()
 
     boardPhoto = cv.imread("board.jpg")
@@ -327,8 +422,11 @@ def main():
     blobDetector = initBlobDetector()
 
     img = None
+    imgPoints = []
+    print("It's recommended to collect at least 20 images with different camera positions.")
     print("Press enter when you are ready...")
     while True:
+        print("Collected image amount: " + str(len(imgPoints)))
         _, img = cap.read()
 
         if method == '1':
@@ -336,33 +434,67 @@ def main():
         elif method == '2':
             img, binary, centersCam = detectAndDrawCirclesPatternHough(img.copy())
         
-        cv.imshow("camera - press ENTER when you are ready", img)
+        cv.imshow("camera - press ENTER to take antorher image - press C to calibrate with the collected data", img)
         cv.imshow("binary", binary)
 
         key = cv.waitKey(1)
         if key == 13 and len(centersCam) == len(centersProj):
-            break
-        elif key == 13:
+            essMatCamProj, _ = calculateEssMatCamProj(centersCam, centersProj, cameraMatrix)
+            if essMatCamProj is None:
+                print("essMatCamProj == None")
+                continue
+            
+            calcCentersProj = []
+            homCalcCentersProj = cv.convertPointsToHomogeneous(np.array(centersCam))
+            for homCalcCenter in homCalcCentersProj:
+                calcCentersProj.append(essMatCamProj @ homCalcCenter)
+            calcCentersProj = cv.convertPointsFromHomogeneous(calcCentersProj)
+            imgPoints.append(calcCentersProj)
+            # break
+        elif key == 13: # ENTER
             print("len(centersCam): " + str(len(centersCam)) + ", len(centersProj): " + str(len(centersProj)))
             print("Not the same amount of points in centersCam as centersProj...")
+        elif key == 99: # C
+            retval, projMatrix, projDistCoeffs, _, _ = cv.calibrateCamera(objPoints, imgPoints, (768, 1024), None, None)
+            if retval:
+                saveProjCalibration("projHome", projMatrix, projDistCoeffs)
+                break
+            else:
+                print("Camera calibration failed, try again...")
 
-    transfMatCamProj = calculateTransfMatCamProj(centersCam, centersProj, cameraMatrix)
-    if transfMatCamProj is None:
-        print("transfMatCamProj == None")
-        return
+    cv.destroyAllWindows()
+    # ----------------------------------------------------------------------------------------------------------------------------------
 
-    # TODO hier nog iets maken dat ik die per frame kan dan
+    # Dit is niet meer echt nodig omdat we enkel intrinsieke calibratie doen
+    # essMatCamProj, transfMatCamProj = calculateEssMatCamProj(centersCam, centersProj, cameraMatrix)
+    # if essMatCamProj is None:
+    #     print("essMatCamProj == None")
+    #     return
+
+    # ----------------------------------------------------------------------------------------------------------------------------------
+    
+    # Dynamic calibration stuff
+
+    # blackImg = np.zeros((768, 1024), dtype=np.uint8)
+    # cv.imshow("black", blackImg)
+
+    # patternImg = cv.imread("patternImg.jpg")
+
     # while True:
     #     _, img = cap.read()
-
+        
+    #     cv.imshow("cam", img)
+    #     cv.waitKey(1)
     #     transformationMatrix = getCalibrationSurfacePose(charucoDetector, img, cameraMatrix, distCoeffs)
     #     if transformationMatrix is None:
     #         print("transformationMatrix == None")
-    #         return
+    #         continue
 
-    cv.destroyAllWindows()
+    #     R, _ = decomposeTransformationMatrix(transformationMatrix)
+    #     # cv.waitKey(0)
 
-    return
+    #     maskProj = makeMaskDynamicCal(img, patternImg, getCalPatternObjPts(charucoDetector), transformationMatrix, essMatCamProj, cameraMatrix, distCoeffs)
+    #     cv.imshow("maskProj", maskProj)
 
 if __name__ == "__main__":
     main()
