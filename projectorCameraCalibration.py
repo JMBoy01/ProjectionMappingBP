@@ -64,7 +64,7 @@ def makeInitCirclePattern(charucoDetector):
         if i in skips:
             continue
     
-        patternImg = cv.circle(patternImg, charucoCorners[i][0], 75, 255, -1)
+        patternImg = cv.circle(patternImg, charucoCorners[i][0], 40, 255, -1)
         # print(boardObjPoints[i])
         circleObjPoints.append(boardObjPoints[i])
 
@@ -74,7 +74,7 @@ def makeInitCirclePattern(charucoDetector):
 
     # plt.imshow(patternImg)
     # plt.show()
-
+        
     img = np.zeros((768, 1024), dtype=np.uint8)
     x = int((img.shape[1] - patternImg.shape[1])/2)
     y = int((img.shape[0] - patternImg.shape[0])/2)
@@ -95,12 +95,16 @@ def makeInitCirclePattern(charucoDetector):
 
         corner = charucoCorners[i][0]/scaleFactor
         circleCenters.append([int(corner[0] + x), int(corner[1] + y)])
+    
+    # Debug prints:
+    print("circleCenters:")
+    print(np.array(circleCenters, dtype=np.float32))
 
     cv.imshow("circle grid pattern", img)
-    # plt.imshow(img)
-    # plt.show()
+    plt.imshow(img)
+    plt.show()
 
-    return img, np.array(circleObjPoints, dtype=np.float32), circleCenters
+    return img, np.array(circleObjPoints, dtype=np.float32), np.array(circleCenters, dtype=np.float32)
 
 def getCalibrationSurfacePose(charucoDetector, img, cameraMatrix, distCoeffs):
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
@@ -160,7 +164,7 @@ def saveCharucoBoard(board, size, filename):
     generatedBoardImg = board.generateImage(size)
     cv.imwrite(filename, generatedBoardImg)
 
-def calculateEssMatCamProj(centersCam, centersProj, cameraMatrix):
+def calculateEssMatCamProj(centersCam, centersProj, cameraMatrix, distCoeffs, projMatrix, projDistCoeffs):
     # Debug prints
     # print("centersProj:")
     # print(centersProj)
@@ -170,27 +174,19 @@ def calculateEssMatCamProj(centersCam, centersProj, cameraMatrix):
     # print(objPoints)    
 
     if len(centersCam) or centersCam is not None:
-        essMatCamProj, _ = cv.findEssentialMat(np.array(centersCam, dtype=np.float32), np.array(centersProj, dtype=np.float32), cameraMatrix, method=cv.RANSAC, prob=.99999, threshold=.1)
-        if essMatCamProj is not None:
-            # Debug prints
-            print("essMatCamProj:")
-            print(essMatCamProj)
-            
-            retval, R, T, _ = cv.recoverPose(essMatCamProj, np.array(centersCam, dtype=np.float32), np.array(centersProj, dtype=np.float32), cameraMatrix)
-            if not retval:
-                print("Wasn't able to recover pose...")
-                return essMatCamProj, None
-            transfMatCamProj = constructTransformationMatrix(R, T)
+        retval, essMatCamProj, R, t, _ = cv.recoverPose(centersCam, centersProj, cameraMatrix, distCoeffs, projMatrix, projDistCoeffs, method=cv.RANSAC, prob=.99999, threshold=1)
+        if retval:
+            transfMatCamProj = constructTransformationMatrix(R, t)
 
             # Debug prints
             print("trasnfMatCamProj:")
             print(transfMatCamProj)
 
-            visualizeCamProj(R, T, centersCam, centersProj, cameraMatrix)
+            visualizeCamProj(R, t, centersCam, centersProj, cameraMatrix, projMatrix)
 
             return essMatCamProj, transfMatCamProj
         else:
-            print("No return value for stereoCalibrate...")
+            print("No return value for recoverPose...")
             return None, None
     else:
         print("No centers found...")
@@ -204,11 +200,11 @@ def detectAndDrawCirclesPatternFind(img, blobDetector):
     binary = cv.GaussianBlur(binary, (3, 3), 1)
 
     patternWasFound, centersCam = cv.findCirclesGrid(binary, patternSize, flags=(cv.CALIB_CB_ASYMMETRIC_GRID + cv.CALIB_CB_CLUSTERING), blobDetector=blobDetector)
-    
-    img = cv.drawChessboardCorners(img, patternSize, centersCam, patternWasFound)
 
     if patternWasFound:
-        centersCam = [point[0] for point in centersCam]
+        img = cv.drawChessboardCorners(img, patternSize, centersCam, patternWasFound)
+
+        centersCam = np.squeeze(centersCam)
         return img, binary, centersCam
     else:
         return img, binary, None
@@ -245,13 +241,26 @@ def detectAndDrawCirclesPatternHough(img):
     else:
         return img, binary, None
 
-def visualizeCamProj(R, T, centersCam, centersProj, cameraMatrix):
-    transfMatCamProj = constructTransformationMatrix(R, T)
+def visualizeCamProj(R, t, centersCam, centersProj, cameraMatrix, projMatrix):
+    # transfMatCamProj = constructTransformationMatrix(R, T)
+    # transfMatProjCam = np.linalg.inv(transfMatCamProj)
+
+    # projPos = np.array([0, 0, 0], dtype=np.float32)
+    
+    # camPos = cv.convertPointsToHomogeneous(np.array([projPos]))[0, 0]
+    # print(camPos)
+    # camPos = (transfMatProjCam @ camPos.T).T
+    # print(camPos)
+    # camPos = cv.convertPointsFromHomogeneous(np.array([camPos]))[0, 0]
+
+    transfMatCamProj = constructTransformationMatrix(R, t)
 
     camPos = np.array([0, 0, 0], dtype=np.float32)
     
     projPos = cv.convertPointsToHomogeneous(np.array([camPos]))[0, 0]
+    print(projPos)
     projPos = (transfMatCamProj @ projPos.T).T
+    print(projPos)
     projPos = cv.convertPointsFromHomogeneous(np.array([projPos]))[0, 0]
 
     # Debug prints
@@ -263,12 +272,21 @@ def visualizeCamProj(R, T, centersCam, centersProj, cameraMatrix):
     points3D = [camPos, projPos]
 
     # source: https://www.opencvhelp.org/tutorials/advanced/reconstruction-opencv/
+    # R, T = decomposeTransformationMatrix(transfMatProjCam)
+    # T = [[T[0]], [T[1]], [T[2]]]
+
+    # Debug prints
+    # print("R:")
+    # print(R)
+    # print("t:")
+    # print(t)
+
     P1 = np.hstack((np.eye(3), np.zeros((3, 1))))
-    P2 = np.hstack((R, T))
+    P2 = np.hstack((R, t))
 
     # Convert the projection matrices to the camera coordinate system
     P1 = cameraMatrix @ P1
-    P2 = cameraMatrix @ P2
+    P2 = projMatrix @ P2
 
     # Debug prints
     # print("centersCam.shape:")
@@ -276,7 +294,7 @@ def visualizeCamProj(R, T, centersCam, centersProj, cameraMatrix):
     # print("centersProj.shape:")
     # print(np.array(centersProj).shape)s
 
-    points4D = cv.triangulatePoints(P1, P2, np.array(centersCam, dtype=np.float32).T, np.array(centersProj, dtype=np.float32).T)
+    points4D = cv.triangulatePoints(P1, P2, centersCam.T, centersProj.T)
     points3DCircles = points4D / points4D[3]  # Convert from homogeneous to Cartesian coordinates
     points3DCircles = points3DCircles[:3, :].T
     
@@ -294,6 +312,9 @@ def visualizeCamProj(R, T, centersCam, centersProj, cameraMatrix):
 
     # Plot the 3D points
     ax.scatter(points3D[:, 0], points3D[:, 1], points3D[:, 2], marker='o', s=5, c=colors, alpha=0.5)
+
+    # Set scale of axis to be equal
+    ax.axis('equal')
 
     # Configure the plot
     ax.set_xlabel('X')
@@ -393,15 +414,166 @@ def saveProjCalibration(filename, projMatrix, projDistCoeffs):
     fs.write("projDistCoeffs", projDistCoeffs)
 
     fs.release()
+    print("Matrices opgeslagen in", filename)
+
+def saveEssAndTransfMat(filename, essMat, transfMat):
+    fs = cv.FileStorage(filename, cv.FILE_STORAGE_WRITE)
+    fs.write("essMat", essMat)
+    fs.write("transfMat", transfMat)
+
+    fs.release()
     print("Calibratiegegevens opgeslagen in", filename)
+
+def convertPointsCamToProjSpace(centersCam, essMatCamProj):
+    calcCentersProj = []
+
+    homCalcCentersProj = cv.convertPointsToHomogeneous(centersCam)
+    homCalcCentersProj = np.squeeze(homCalcCentersProj)
+    # Debug prints
+    print("centersCam:")
+    print(centersCam)
+    print("homCalcCentersProj:")
+    print(homCalcCentersProj)
+    print("---------------------------------------------------------------------")
+
+    for homCalcCenter in homCalcCentersProj:
+        point = (essMatCamProj @ homCalcCenter.T).T
+        calcCentersProj.append(point)
+
+        # Debug prints
+        print("homCalcCenter:")
+        print(homCalcCenter)
+        print("point:")
+        print(point)
+    
+    calcCentersProj = np.squeeze(calcCentersProj)
+    print("calcCentersProj:")
+    print(calcCentersProj)
+    calcCentersProj = cv.convertPointsFromHomogeneous(calcCentersProj)
+    calcCentersProj = np.squeeze(calcCentersProj)
+    # imgPoints.append(calcCentersProj)
+
+    # Debug prints
+    print("---------------------------------------------------------------------")
+    print("calcCentersProj:")
+    print(calcCentersProj)
+
+    return calcCentersProj
+
+def collectCalibrationDataProj(img, blobDetector, allCentersCam, objPoints, allObjPoints):
+    img, mask, centersCam = detectAndDrawCirclesPatternFind(img, blobDetector)
+
+    cv.imshow("camera", img)
+    cv.imshow("mask", mask)
+
+    if centersCam is None:
+        print("Value of centersCam is None")
+        return img, mask
+    elif len(centersCam) != 15:
+        print("Detected amount of centers: " + str(len(centersCam)) + "; expected: 15")
+        return img, mask
+    
+    key = cv.waitKey(1)
+    if key == 13:
+        allCentersCam.append(centersCam)
+        allObjPoints.append(objPoints)
+
+        # Debug prints
+        print("len(allCentersCam):")
+        print(len(allCentersCam))
+        # print("allCentersCam:")
+        # print(allCentersCam)
+    
+    return img, mask
+
+def correctObjPoints(objPoints, charucoBoard):
+    while True:
+        print("Measure the distance between 2 circle centers and give value in meters...")
+        distance = input("Distance (in meter): ")
+        try:
+            distance = float(distance)
+            break
+        except ValueError:
+            print("Not a valid input, give the distance in meters and use a . instead of ,")
+
+    scale = (distance/2)/charucoBoard.getSquareLength()
+
+    # Debug print
+    print("scale:")
+    print(scale)
+
+    return objPoints*scale
+
+def getCentersProjectionPlane(img, blobDetector, charucoDetector):
+    cv.imshow("camera", img)
+
+    gray = cv.cvtColor(img.copy(), cv.COLOR_BGR2GRAY)
+    charucoCorners, charucoIds, markerCorners, markerIds = charucoDetector.detectBoard(gray)
+
+    if charucoCorners is None:
+        # print("charucoCorners is None")
+        return None, None
+
+    charucoCorners = np.array([point[0] for point in charucoCorners])
+
+    objPoints = charucoDetector.getBoard().getChessboardCorners()
+    objPoints2D = [[point[0], point[1]] for point in objPoints]
+
+    if len(charucoCorners) != len(objPoints2D):
+        # print("len(charucoCorners) = " + str(len(charucoCorners)) + "; expected = " + str(len(objPoints2D)))
+        return None, None
+
+    charucoSize = charucoDetector.getBoard().getChessboardSize()
+    img = cv.drawChessboardCorners(img, charucoSize, charucoCorners, False)
+    cv.imshow("camera", img)
+
+    # Debug prints
+    # print("charucoCorners:")
+    # print(charucoCorners)
+    # print("-------------------------")
+    # print("objPoints:")
+    # print(objPoints)
+    # print("-------------------------")
+    # print("objPoints2D:")
+    # print(np.array(objPoints2D))
+    # print("-------------------------")
+
+    H, _ = cv.findHomography(charucoCorners, np.array(objPoints2D))
+
+    img, mask, centersCam = detectAndDrawCirclesPatternFind(img, blobDetector)
+
+    if centersCam is None:
+        return None, None
+
+    cv.imshow("camera", img)
+
+    centersConvertedHmg = []
+    centersCamHmg = cv.convertPointsToHomogeneous(np.array(centersCam, np.float32))
+    for center in centersCamHmg:
+        centerConverted = (H @ center.T).T
+        centersConvertedHmg.append(centerConverted)
+
+    centersConverted = cv.convertPointsFromHomogeneous(np.array(centersConvertedHmg))
+    centersConverted = np.array([point[0] for point in centersConverted])
+    return centersConverted, centersCam
+
+def makeCirclePatternImages(size = (768, 1024), spaceBetween = 25, circleSize = 10):
+    start_x = 0
+    start_y = 0
+    img = np.zeros(size, dtype=np.uint8)
+    for i in range(0, 5, 1):
+        for j in range(0, 3, 1):
+            img = cv.circle(img, (start_x + 2 * j * spaceBetween + (i % 2) * spaceBetween, start_y + i * spaceBetween), circleSize, 255, -1)
 
 def main():
     cap = cv.VideoCapture(2)
-    # succes, img = cap.read()
+    succes, img = cap.read()
+    print("camera shape:")
+    print(img.shape)
 
     boardPhoto = cv.imread("board.jpg")
 
-    cameraMatrix, distCoeffs, rvecs, tvecs = loadCameraCalibration("cameraSchoolDepthDefect")
+    cameraMatrix, distCoeffs, _, _ = loadCameraCalibration("cameraSchoolDepthDefect")
 
     dictionaries = findDict(cv.cvtColor(boardPhoto, cv.COLOR_BGR2GRAY))
     dictionary = cv.aruco.getPredefinedDictionary(dictionaries[1])
@@ -417,52 +589,228 @@ def main():
 
     patternImg, objPoints, centersProj = makeInitCirclePattern(charucoDetector)
 
-    method = askCirclePatternDetectionMethod()
+    # method = askCirclePatternDetectionMethod()
 
     blobDetector = initBlobDetector()
 
-    img = None
-    imgPoints = []
-    print("It's recommended to collect at least 20 images with different camera positions.")
-    print("Press enter when you are ready...")
-    while True:
-        print("Collected image amount: " + str(len(imgPoints)))
-        _, img = cap.read()
+    # ----------------------------------------------------------------------------------------------------------------------------------
 
-        if method == '1':
-            img, binary, centersCam = detectAndDrawCirclesPatternFind(img.copy(), blobDetector)
-        elif method == '2':
-            img, binary, centersCam = detectAndDrawCirclesPatternHough(img.copy())
-        
-        cv.imshow("camera - press ENTER to take antorher image - press C to calibrate with the collected data", img)
-        cv.imshow("binary", binary)
+    # NIEUWE CODE (MET UITLEG VAN JONI)
+
+    allCentersProjPlane = []
+    allCentersProj = []
+
+    while True:
+        _, img = cap.read()
+        img = cv.undistort(img, cameraMatrix, distCoeffs)
+
+        centersProjPlane, _ = getCentersProjectionPlane(img, blobDetector, charucoDetector)
 
         key = cv.waitKey(1)
-        if key == 13 and len(centersCam) == len(centersProj):
-            essMatCamProj, _ = calculateEssMatCamProj(centersCam, centersProj, cameraMatrix)
-            if essMatCamProj is None:
-                print("essMatCamProj == None")
-                continue
-            
-            calcCentersProj = []
-            homCalcCentersProj = cv.convertPointsToHomogeneous(np.array(centersCam))
-            for homCalcCenter in homCalcCentersProj:
-                calcCentersProj.append(essMatCamProj @ homCalcCenter)
-            calcCentersProj = cv.convertPointsFromHomogeneous(calcCentersProj)
-            imgPoints.append(calcCentersProj)
-            # break
-        elif key == 13: # ENTER
-            print("len(centersCam): " + str(len(centersCam)) + ", len(centersProj): " + str(len(centersProj)))
-            print("Not the same amount of points in centersCam as centersProj...")
-        elif key == 99: # C
-            retval, projMatrix, projDistCoeffs, _, _ = cv.calibrateCamera(objPoints, imgPoints, (768, 1024), None, None)
-            if retval:
-                saveProjCalibration("projHome", projMatrix, projDistCoeffs)
-                break
-            else:
-                print("Camera calibration failed, try again...")
 
-    cv.destroyAllWindows()
+        if key == 13 and centersProjPlane is not None:
+            centersProjPlane = np.array([[point[0], point[1], 0] for point in centersProjPlane], np.float32)
+            allCentersProjPlane.append(centersProjPlane)
+
+            allCentersProj.append(centersProj)
+
+            print("Images collected: " + str(len(allCentersProjPlane)))
+        elif key == 99 and len(allCentersProjPlane) >= 15:
+            break
+        else:
+            "centersProjPlane = None"
+
+    # Convert to 3D points to use as objPoints
+    
+
+    # Debug prints
+    print("allCentersProjPlane:")
+    print(allCentersProjPlane)
+    print("--------------------------")
+    print("allCentersProj:")
+    print(allCentersProj)
+    print("--------------------------")
+
+
+    patternImgSize = (patternImg.shape[1], patternImg.shape[0])
+    retval, projMatrix, projDistCoeffs, _, _ = cv.calibrateCamera(allCentersProjPlane, allCentersProj, patternImgSize, None, None)
+    
+    if not retval:
+        print("Could not calibrate projector, try again...")
+        print("Exiting program...")
+        exit(0)
+
+    saveProjCalibration("projSchool", projMatrix, projDistCoeffs)
+
+    # Debug prints
+    print("centersProjPlane:")
+    print(centersProjPlane)
+    print("-------------------------------")
+    print("projMatrix:")
+    print(projMatrix)
+    print("-------------------------------")
+    print("projDistCoeffs:")
+    print(projDistCoeffs)
+    print("-------------------------------")
+
+    print("Put your camera in the set position to calibrate the extrinsic parameters.")
+    print("Press ENTER when you have a good image...")
+
+    allCentersProjPlane = []
+    allCentersProj = []
+    allCentersCam = []
+
+    while True:
+        _, img = cap.read()
+        img = cv.undistort(img, cameraMatrix, distCoeffs)
+
+        centersProjPlane, centersCam = getCentersProjectionPlane(img, blobDetector, charucoDetector)
+
+        key = cv.waitKey(1)
+
+        if key == 13 and centersProjPlane is not None:
+            centersProjPlane = np.array([[point[0], point[1], 0] for point in centersProjPlane], np.float32)
+            allCentersProjPlane.append(centersProjPlane)
+
+            allCentersProj.append(centersProj)
+
+            allCentersCam.append(centersCam)
+
+            print("Images collected: " + str(len(allCentersProjPlane)))
+        elif key == 99 and len(allCentersProjPlane) >= 15:
+            break
+        else:
+            "centersProjPlane = None"
+
+    retval, _, _, _, _, R, T, E, F = cv.stereoCalibrate(allCentersProjPlane, allCentersCam, allCentersProj, cameraMatrix, distCoeffs, projMatrix, projDistCoeffs, (patternImg.shape[1], patternImg.shape[0]))
+
+    if not retval:
+        print("Could not stereo calibrate camera and projector, try again...")
+        print("Exiting program...")
+        exit(0)
+    
+    transfMat = constructTransformationMatrix(R, T)
+
+    # Debug prints
+    print("essMat:")
+    print(E)
+    print("transfMat:")
+    print(transfMat)
+
+    saveEssAndTransfMat("essAndTransfMatCamProjSchool", E, transfMat)
+
+    # visualizeCamProj(R, T, centersCam, centersProj, cameraMatrix, projMatrix)
+
+    # ----------------------------------------------------------------------------------------------------------------------------------
+
+    # WERKTE NIET
+
+    # objPoints = correctObjPoints(objPoints, charucoBoard)
+
+    # print("You have to take 20 images with different camera positions for the calibration to work.")
+    # print("Press ENTER to take the next image.")
+
+    # allCentersCam = []
+    # allObjPoints = []
+
+    # while len(allCentersCam) < 20:
+    #     _, img = cap.read()
+    #     # img = cv.resize(img, (1024, 768))
+    #     img = cv.undistort(img, cameraMatrix, distCoeffs)
+
+    #     img, mask = collectCalibrationDataProj(img, blobDetector, allCentersCam, objPoints, allObjPoints)
+
+    # allCentersCam = np.array(allCentersCam, np.float32)
+    # allObjPoints = np.array(allObjPoints, np.float32)
+
+    # shape = (img.shape[1], img.shape[0])
+
+    # retval, projMatrix, projDistCoeffs, _, _ = cv.calibrateCamera(allObjPoints, allCentersCam, shape, None, None)
+    # if not retval:
+    #     print("Projector calibration failed, exiting program...")
+    #     cv.destroyAllWindows()
+    #     exit(0)
+
+    # saveProjCalibration("projHome", projMatrix, projDistCoeffs)
+
+    # print("Place the camera in its set position to calculate the extrinsic parameters.")
+
+    # ----------------------------------------------------------------------------------------------------------------------------------
+
+    # FOUTE METHODE NIET GEBRUIKEN
+
+    # while True:
+    #     _, img = cap.read()
+    #     img = cv.undistort(img, cameraMatrix, distCoeffs)
+    #     img, mask, centersCam = detectAndDrawCirclesPatternFind(img, blobDetector)
+
+    #     cv.imshow("camera", img)
+    #     cv.imshow("mask", mask)
+
+    #     key = cv.waitKey(1)
+    #     if key == 13:
+    #         if centersCam is None:
+    #             print("Value of centersCam is None")
+    #             continue
+    #         elif len(centersCam) != 15:
+    #             print("Detected amount of centers: " + str(len(centersCam)) + "; expected: 15")
+    #             continue
+    #         else:
+    #             break
+
+    # patternImg = cv.cvtColor(patternImg, cv.COLOR_GRAY2BGR)
+    # patternImg = cv.undistort(patternImg, projMatrix, projDistCoeffs)
+
+    # patternImg, _, centersProj = detectAndDrawCirclesPatternFind(patternImg, blobDetector)
+    # cv.imshow("pattern img undistort", patternImg)
+    # cv.waitKey(1)
+
+    # essMatCamProj, transfMatCamProj = calculateEssMatCamProj(centersCam, centersProj, cameraMatrix, distCoeffs, projMatrix, projDistCoeffs)
+
+    # saveEssAndTransfMat("essAndTransfMatCamProjHome", essMatCamProj, transfMatCamProj)
+
+    # ----------------------------------------------------------------------------------------------------------------------------------
+
+    # OUDE METHODE, WERKT NIET
+
+    # while True:
+    #     _, img = cap.read()
+    #     img = cv.resize(img, (1024, 768))
+
+    #     if method == '1':
+    #         img, binary, centersCam = detectAndDrawCirclesPatternFind(img.copy(), blobDetector)
+    #     elif method == '2':
+    #         img, binary, centersCam = detectAndDrawCirclesPatternHough(img.copy())
+        
+    #     cv.imshow("camera", img)
+    #     cv.imshow("binary", binary)
+
+    #     key = cv.waitKey(1)
+    #     if key == 13 and len(centersCam) == len(centersProj):
+    #         essMatCamProj, _ = calculateEssMatCamProj(centersCam, centersProj, cameraMatrix)
+    #         if essMatCamProj is None:
+    #             print("essMatCamProj == None")
+    #             continue
+            
+    #         calcCentersProj = convertPointsCamToProjSpace(centersCam, essMatCamProj)
+    #         imgPoints.append(calcCentersProj)
+
+    #         print("Collected image amount: " + str(len(imgPoints)))
+    #         # break
+    #     elif key == 13: # ENTER
+    #         print("len(centersCam): " + str(len(centersCam)) + ", len(centersProj): " + str(len(centersProj)))
+    #         print("Not the same amount of points in centersCam as centersProj...")
+
+    #     if len(imgPoints) == 15:
+    #         retval, projMatrix, projDistCoeffs, _, _ = cv.calibrateCamera([np.array(objPoints)], np.array(imgPoints), (768, 1024), None, None)
+    #         if retval:
+    #             saveProjCalibration("projHome", projMatrix, projDistCoeffs)
+    #             break
+    #         else:
+    #             print("Camera calibration failed, try again...")
+
+    # cv.destroyAllWindows()
+
     # ----------------------------------------------------------------------------------------------------------------------------------
 
     # Dit is niet meer echt nodig omdat we enkel intrinsieke calibratie doen

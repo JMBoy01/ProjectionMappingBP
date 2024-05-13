@@ -26,3 +26,10 @@
 | 24-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Extrensieke parameters zijn correct en stabiel! Gecontroleerd met visualisatie. |
 | 25-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Geprobeerd om dynamische kalibratie te gebruiken om intrinsieke parameters van projector te bepalen, nog niet gelukt. |
 | 26-04-2024 | Verder gewerkt aan ray plane intersect implementatie. Veranderd naar statische kalibratie voor de intrinsieke parameters te bepalen aangezien camera en projector ook blijven staan op hun plek. |
+| 01-05-2024 | Verder gewerkt aan ray plane intersect implementatie. Methode van afgelopen week herdacht want implementatie werkt niet zoals verwacht. |
+| 02-05-2024 | Verder gewerkt aan nieuwe implementatie, twijfels als deze wel correct zal zijn. |
+| 03-05-2024 | Nogmaals opnieuw gekeken naar een juist implementatie, de vorige werkte ook niet als verwacht. |
+| 04-05-2024 | Verder gewerkt aan nieuwe implementatie. |
+| 11-05-2024 | Online gesproken met Joni over wat er precies fout gaat en als mijn denkwijze correct is. Hij heeft een voorstel van een implementatie gedaan, implementatie al geprobeerd. 13-05-2024 naar het edm om de methode nog eens duidelijk te overlopen. |
+| 12-05-2024 | Al zo ver mogelijk geprobeerd de implementatie correct te doen. |
+| 13-05-2024 | Uitleg gekregen van Joni, het idee en de methode achter de 'juiste' implementatie is nu duidelijk voor me. De implementatie geschreven en in theorie werkt het. In praktijk zijn de resultaten nog niet heel correct. Kan opgelost worden door patroon in verschillende plaats van het beeld te zetten, bijvoorbeeld ook eens in de hoeken. |
