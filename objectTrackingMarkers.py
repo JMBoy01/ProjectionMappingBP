@@ -7,10 +7,8 @@ def loadCameraCalibration(filename):
     fs = cv.FileStorage(filename, cv.FILE_STORAGE_READ)
     cameraMatrix = fs.getNode("cameraMatrix").mat()
     distCoeffs = fs.getNode("distCoeffs").mat()
-    rvecs = fs.getNode("rvecs").mat()
-    tvecs = fs.getNode("tvecs").mat()
     fs.release()
-    return cameraMatrix, distCoeffs, rvecs, tvecs
+    return cameraMatrix, distCoeffs
 
 def loadObjectPoints(filename):
     fs = cv.FileStorage(filename, cv.FILE_STORAGE_READ)
@@ -22,11 +20,19 @@ def loadObjectPoints(filename):
     fs.release()
     return [objectPoints00, objectPoints10, objectPoints20]
 
-def sendDataToUnity(socket, serverAddressPort, transformationMatrix):
+def loadExtrinsic(filename):
+    fs = cv.FileStorage(filename, cv.FILE_STORAGE_READ)
+
+    essMat = fs.getNode("essMat").mat()
+    transfMat = fs.getNode("transfMat").mat()
+
+    fs.release()
+    return essMat, transfMat
+
+def sendTransfMatToUnity(socket, serverAddressPort, transformationMatrix):
 
     matrix_list = transformationMatrix.flatten().tolist()
-    # matrix_list = [number for number in (row for row in transformationMatrix)]
-    print(matrix_list)
+    # print(matrix_list)
     
     data_json = json.dumps(matrix_list)
     
@@ -100,6 +106,7 @@ def trackBox(img, objectPoints, cameraMatrix, distCoeffs, arucoDetector, kalman)
         for i in range(len(objPoints[0][0])):
             if all(subarray[i] == 0 for subarray in objPoints[0]):
                 zeroIndex = i
+                break
 
         if zeroIndex is not None:
             for cornerObjPoints in objPoints:
@@ -185,6 +192,65 @@ def trackBox(img, objectPoints, cameraMatrix, distCoeffs, arucoDetector, kalman)
     #     return estimatedTransMat
     
     return transformationMatrix
+
+
+
+def initArucoBoard(allObjPoints, dict):
+    # Debug prints
+    # print("allObjPoints:")
+    # print(allObjPoints)
+    # print("---------------------------")
+    
+    objPoints = []
+    for surfaceObjPoints in allObjPoints:
+        for cornerObjPoints in surfaceObjPoints:
+            objPoints.append(cornerObjPoints)
+    objPoints = np.array(objPoints, np.float32)
+    
+    # Debug prints
+    # print("objPoints: ")
+    # print(objPoints)
+    # print("---------------------------")
+
+    ids = []
+    for itr in range(0, int(len(objPoints)/4), 1):
+        for i in range(1, 5, 1):
+            ids.append(itr*10 + i)
+    ids = np.array(ids)
+
+    # Debug prints
+    # print("ids:")
+    # print(ids)
+    # print("---------------------------")
+
+    board = cv.aruco.Board(objPoints, dict, ids)
+    return board
+
+def trackBoxV2(img, board, arucoDetector, cameraMatrix, distCoeffs):
+    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    corners, ids, rejectedImgPoints = arucoDetector.detectMarkers(gray)
+    if corners is None:
+        return None
+    if len(corners) == 0:
+        return None
+    
+    # Dit mag niet omdat mijn Z coördinaat niet overal constant is :(
+    # corners, ids, rejectedImgPoints, recoveredIds = arucoDetector.refineDetectedMarkers(
+    #         image = gray,
+    #         board = board,
+    #         detectedCorners = corners,
+    #         detectedIds = ids,
+    #         rejectedCorners = rejectedImgPoints)
+    
+    objPoints, imgPoints = board.matchImagePoints(corners, ids)
+    retval, rvec, tvec = cv.solvePnP(objPoints, imgPoints, cameraMatrix, distCoeffs)
+    if not retval:
+        return None
+    
+    transfMat = constructTransformationMatrix(rvec, tvec)
+    return transfMat
+
+
 
 def predictCorners(rvecs, tvec, surfaceIds, objPoints):
     idRange = int(surfaceIds[0]/10)*10
@@ -486,12 +552,7 @@ def trackMarkers(img, arucoDetector):
     markerCorners, markerIds, _ = arucoDetector.detectMarkers(gray)
 
     if markerIds is not None:
-        for i in range(len(markerIds)):
-            # Bepaal rotatie- en translatievectoren voor elke marker
-            # Werkt niet meer, deprecated method :(
-            # rvec, tvec, _ = cv.aruco.estimatePoseSingleMarkers(markerCorners[i], markerLength, cameraMatrix, distCoeffs)
-
-            markerImg = cv.aruco.drawDetectedMarkers(img, markerCorners, markerIds, (255, 0, 255))
+        markerImg = cv.aruco.drawDetectedMarkers(img, markerCorners, markerIds, (255, 0, 255))
         return markerImg
     else:
         return img
@@ -515,25 +576,31 @@ def main():
     arucoDetector = cv.aruco.ArucoDetector(dictionary)
 
     # cameraSchool is de zware, de DepthDefect is de lichte
-    cameraMatrix, distCoeffs, rvecs, tvecs = loadCameraCalibration("cameraSchoolDepthDefect")
+    cameraMatrix, distCoeffs = loadCameraCalibration("cameraHome")
     objPoints = loadObjectPoints("objectPoints")
-    
-    boxMarkerLength = 0.053 # in meter
+    essMat, transfMatCamProj = loadExtrinsic("essAndTransfMatCamProjHome")
 
     cap = cv.VideoCapture(0, apiPreference=cv.CAP_ANY, params=[cv.CAP_PROP_FRAME_WIDTH, 1920, cv.CAP_PROP_FRAME_HEIGHT, 1080])
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    serverAddressPort = ("127.0.0.1", 6969)
+    serverAddressPortTransfMat = ("127.0.0.1", 6969)
+    serverAddressPortProjPos = ("127.0.0.1", 6970)
+
+    sendTransfMatToUnity(sock, serverAddressPortProjPos, transfMatCamProj)
+
+    board = initArucoBoard(objPoints, dictionary)
 
     while True:
         succes, img = cap.read()
         img = cv.undistort(img, cameraMatrix, distCoeffs)
         imgMarkers = trackMarkers(img.copy(), arucoDetector)
+        imgMarkers = cv.resize(imgMarkers, (int(imgMarkers.shape[1]/2), int(imgMarkers.shape[0]/2)))
 
-        transformationMatrix = trackBox(img, objPoints, cameraMatrix, distCoeffs, arucoDetector, initKalmanFilter())
+        # transformationMatrix = trackBox(img, objPoints, cameraMatrix, distCoeffs, arucoDetector, initKalmanFilter())
+        transformationMatrix = trackBoxV2(img, board, arucoDetector, cameraMatrix, distCoeffs)
         if transformationMatrix is not None:
             transformationMatrixUnity = convertTransfMatToUnityCoordSys(transformationMatrix)
-            sendDataToUnity(sock, serverAddressPort, transformationMatrixUnity)
+            sendTransfMatToUnity(sock, serverAddressPortTransfMat, transformationMatrixUnity)
 
         cv.imshow("camera", imgMarkers)
         # cv.imshow("predicted", imgPredicted)
