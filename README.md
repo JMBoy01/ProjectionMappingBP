@@ -33,3 +33,6 @@
 | 11-05-2024 | Online gesproken met Joni over wat er precies fout gaat en als mijn denkwijze correct is. Hij heeft een voorstel van een implementatie gedaan, implementatie al geprobeerd. 13-05-2024 naar het edm om de methode nog eens duidelijk te overlopen. |
 | 12-05-2024 | Al zo ver mogelijk geprobeerd de implementatie correct te doen. |
 | 13-05-2024 | Uitleg gekregen van Joni, het idee en de methode achter de 'juiste' implementatie is nu duidelijk voor me. De implementatie geschreven en in theorie werkt het. In praktijk zijn de resultaten nog niet heel correct. Kan opgelost worden door patroon in verschillende plaats van het beeld te zetten, bijvoorbeeld ook eens in de hoeken. |
+| 14-05-2024 | Meer code geschreven om kalibratie werkende te krijgen. Gesproken met Joni over mogelijk fouten in de code. |
+| 15-05-2024 | Meer code geschreven om kalibratie werkende te krijgen. Gesproken met Joni over mogelijk fouten in de code. |
+| 16-05-2024 | Validatie dataset gebruikt om code te controleren, fouten eruit gehaald samen met Joni via chat. 2de versie van de camera kalibratie code geschreven die beter werkt. Andere webcam gefixed die een hogere resolutie heeft. Meer code geschreven om kalibratie werkende te krijgen. Gesproken met Joni over mogelijk fouten in de code. |

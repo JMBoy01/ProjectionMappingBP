@@ -1,6 +1,7 @@
 import cv2 as cv
 import numpy as np
 import socket
+import json
 
 def loadCameraCalibration(filename):
     fs = cv.FileStorage(filename, cv.FILE_STORAGE_READ)
@@ -22,11 +23,15 @@ def loadObjectPoints(filename):
     return [objectPoints00, objectPoints10, objectPoints20]
 
 def sendDataToUnity(socket, serverAddressPort, transformationMatrix):
-    # data = iterations, rotationMatrix, tvecAvg
-    data = transformationMatrix[0], transformationMatrix[1], transformationMatrix[2], transformationMatrix[3]
-    data = str.encode(str(data))
+
+    matrix_list = transformationMatrix.flatten().tolist()
+    # matrix_list = [number for number in (row for row in transformationMatrix)]
+    print(matrix_list)
+    
+    data_json = json.dumps(matrix_list)
+    
+    data = data_json.encode('utf-8')
     socket.sendto(data, serverAddressPort)
-    # print("Data send: " + str(data))
 
 def trackBox(img, objectPoints, cameraMatrix, distCoeffs, arucoDetector, kalman):
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
@@ -35,7 +40,7 @@ def trackBox(img, objectPoints, cameraMatrix, distCoeffs, arucoDetector, kalman)
     # print(str(markerCorners))
 
     if markerIds is None or len(markerIds) < 2:
-        return img
+        return None
 
     # neem lijsten samen
     zippedData = zip(markerIds, markerCorners)
@@ -491,6 +496,20 @@ def trackMarkers(img, arucoDetector):
     else:
         return img
 
+def convertTransfMatToUnityCoordSys(transfMat):
+    transfMatInv = np.linalg.inv(transfMat)
+    # Make conversion matrix
+    convertMat = [[1, 0, 0, 0],
+                  [0, -1, 0, 0],
+                  [0, 0, 1, 0],
+                  [0, 0, 0, 1]]
+    convertMat = np.array(convertMat)
+    
+    transfMat = convertMat @ transfMatInv @ convertMat
+    transfMat = np.linalg.inv(transfMat)
+
+    return transfMat
+
 def main():
     dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_6X6_100)
     arucoDetector = cv.aruco.ArucoDetector(dictionary)
@@ -501,7 +520,7 @@ def main():
     
     boxMarkerLength = 0.053 # in meter
 
-    cap = cv.VideoCapture(1)
+    cap = cv.VideoCapture(0, apiPreference=cv.CAP_ANY, params=[cv.CAP_PROP_FRAME_WIDTH, 1920, cv.CAP_PROP_FRAME_HEIGHT, 1080])
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     serverAddressPort = ("127.0.0.1", 6969)
@@ -513,7 +532,8 @@ def main():
 
         transformationMatrix = trackBox(img, objPoints, cameraMatrix, distCoeffs, arucoDetector, initKalmanFilter())
         if transformationMatrix is not None:
-            sendDataToUnity(sock, serverAddressPort, transformationMatrix)
+            transformationMatrixUnity = convertTransfMatToUnityCoordSys(transformationMatrix)
+            sendDataToUnity(sock, serverAddressPort, transformationMatrixUnity)
 
         cv.imshow("camera", imgMarkers)
         # cv.imshow("predicted", imgPredicted)

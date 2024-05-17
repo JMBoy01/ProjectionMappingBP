@@ -1,3 +1,51 @@
+# ---------------------------------------------------------------------------------------------------------------------------
+
+# NIET MEER NODIG WANT DEZELFDE DATA
+
+# print("Put your camera in the set position to calibrate the extrinsic parameters.")
+# print("Press ENTER when you have a good image...")
+
+# allCentersProjPlane = []
+# allCentersProj = []
+# allCentersCam = []
+
+# patternImgIndex = 0
+# counter = 0
+
+# while True:
+#     if counter >= 4 and not patternImgIndex >= len(patternImages) - 1:
+#         patternImgIndex += 1
+#         counter = 0
+
+#     patternImg = patternImages[patternImgIndex]
+#     cv.imshow("patternImg", patternImg)
+
+#     _, img = cap.read()
+#     img = cv.undistort(img, cameraMatrix, distCoeffs)
+
+#     centersProjPlane, centersCam = getCentersProjectionPlane(img, blobDetector, charucoDetector)
+#     _, _, centersProj = detectAndDrawCirclesPatternFind(patternImg, blobDetector, True)
+
+#     key = cv.waitKey(1)
+
+#     if key == 13 and centersProjPlane is not None:
+#         centersProjPlane = np.array([[point[0], point[1], 0] for point in centersProjPlane], np.float32)
+#         allCentersProjPlane.append(centersProjPlane)
+
+#         allCentersProj.append(centersProj)
+
+#         allCentersCam.append(centersCam)
+
+#         counter += 1
+
+#         print("Images collected: " + str(len(allCentersProjPlane)))
+#     elif key == 99 and len(allCentersProjPlane) >= 15:
+#         break
+#     else:
+#         "centersProjPlane = None"
+
+# visualizeCamProj(R, T, centersCam, centersProj, cameraMatrix, projMatrix)
+
 # ----------------------------------------------------------------------------------------------------------------------------------
 
 # WERKTE NIET
@@ -78,7 +126,7 @@
 #         img, binary, centersCam = detectAndDrawCirclesPatternFind(img.copy(), blobDetector)
 #     elif method == '2':
 #         img, binary, centersCam = detectAndDrawCirclesPatternHough(img.copy())
-    
+
 #     cv.imshow("camera", img)
 #     cv.imshow("binary", binary)
 
@@ -88,7 +136,7 @@
 #         if essMatCamProj is None:
 #             print("essMatCamProj == None")
 #             continue
-        
+    
 #         calcCentersProj = convertPointsCamToProjSpace(centersCam, essMatCamProj)
 #         imgPoints.append(calcCentersProj)
 
@@ -127,7 +175,7 @@
 
 # while True:
 #     _, img = cap.read()
-    
+
 #     cv.imshow("cam", img)
 #     cv.waitKey(1)
 #     transformationMatrix = getCalibrationSurfacePose(charucoDetector, img, cameraMatrix, distCoeffs)

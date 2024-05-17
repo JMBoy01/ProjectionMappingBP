@@ -1,15 +1,14 @@
 import cv2 as cv
 import numpy as np
 from matplotlib import pyplot as plt
+import screeninfo
 
 def loadCameraCalibration(filename):
     fs = cv.FileStorage(filename, cv.FILE_STORAGE_READ)
     cameraMatrix = fs.getNode("cameraMatrix").mat()
     distCoeffs = fs.getNode("distCoeffs").mat()
-    rvecs = fs.getNode("rvecs").mat()
-    tvecs = fs.getNode("tvecs").mat()
     fs.release()
-    return cameraMatrix, distCoeffs, rvecs, tvecs
+    return cameraMatrix, distCoeffs
 
 def findDict(img):
     dictionaries = [
@@ -192,17 +191,21 @@ def calculateEssMatCamProj(centersCam, centersProj, cameraMatrix, distCoeffs, pr
         print("No centers found...")
         return None, None
 
-def detectAndDrawCirclesPatternFind(img, blobDetector):
-    patternSize = (3, 5) # 3 horizontaal, 5 vertical mag 1 schuin geteld worden
-    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    _, binary = cv.threshold(gray, 200, 255, cv.THRESH_BINARY)
-    # kleine blur om de randen minder scherp en pixelated te maken
-    binary = cv.GaussianBlur(binary, (3, 3), 1)
+def detectAndDrawCirclesPatternFind(img, blobDetector, isImgPatternImg):
+    patternSize = (5, 7) # 5 horizontaal, 7 vertical mag 1 schuin geteld worden
+
+    binary = img.copy()
+    if not isImgPatternImg:
+        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+        _, binary = cv.threshold(gray, 220, 255, cv.THRESH_BINARY)
+        # kleine blur om de randen minder scherp en pixelated te maken
+        binary = cv.GaussianBlur(binary, (3, 3), 1)
 
     patternWasFound, centersCam = cv.findCirclesGrid(binary, patternSize, flags=(cv.CALIB_CB_ASYMMETRIC_GRID + cv.CALIB_CB_CLUSTERING), blobDetector=blobDetector)
 
     if patternWasFound:
-        img = cv.drawChessboardCorners(img, patternSize, centersCam, patternWasFound)
+        if not isImgPatternImg:
+            img = cv.drawChessboardCorners(img, patternSize, centersCam, patternWasFound)
 
         centersCam = np.squeeze(centersCam)
         return img, binary, centersCam
@@ -339,6 +342,21 @@ def askCirclePatternDetectionMethod():
 
     return method
 
+def initCharucoDetector():
+    boardPhoto = cv.imread("./Overige Images/board.jpg")
+
+    dictionaries = findDict(cv.cvtColor(boardPhoto, cv.COLOR_BGR2GRAY))
+    dictionary = cv.aruco.getPredefinedDictionary(dictionaries[1])
+
+    boardSize = (8, 6) # aantal vakjes (hor, ver)
+    squareLength = 0.03 # in meter
+    markerLength = 0.015 # in meter
+    charucoBoard = cv.aruco.CharucoBoard(boardSize, squareLength, markerLength, dictionary)
+
+    charucoDetector = cv.aruco.CharucoDetector(charucoBoard)
+
+    return charucoDetector
+
 def initBlobDetector():
     params = cv.SimpleBlobDetector_Params()
     params.blobColor = 255 # 0 = zwart, 255 = wit
@@ -353,6 +371,15 @@ def initBlobDetector():
 
     blobDetector = cv.SimpleBlobDetector_create(params)
     return blobDetector
+
+def initArucoDetector():
+    boardPhoto = cv.imread("./Overige Images/board.jpg")
+
+    dictionaries = findDict(cv.cvtColor(boardPhoto, cv.COLOR_BGR2GRAY))
+    dictionary = cv.aruco.getPredefinedDictionary(dictionaries[1])
+
+    arucoDetector = cv.aruco.ArucoDetector(dictionary)
+    return arucoDetector
 
 def makeMaskDynamicCal(img, patternImg, objPoints, transfMat, essMat, cameraMatrix, distCoeffs):
     R, T = decomposeTransformationMatrix(transfMat)
@@ -461,7 +488,7 @@ def convertPointsCamToProjSpace(centersCam, essMatCamProj):
     return calcCentersProj
 
 def collectCalibrationDataProj(img, blobDetector, allCentersCam, objPoints, allObjPoints):
-    img, mask, centersCam = detectAndDrawCirclesPatternFind(img, blobDetector)
+    img, mask, centersCam = detectAndDrawCirclesPatternFind(img, blobDetector, False)
 
     cv.imshow("camera", img)
     cv.imshow("mask", mask)
@@ -504,27 +531,25 @@ def correctObjPoints(objPoints, charucoBoard):
 
     return objPoints*scale
 
-def getCentersProjectionPlane(img, blobDetector, charucoDetector):
+def getCentersProjectionPlane(img, blobDetector, charucoDetector, arucoDetector):
     cv.imshow("camera", img)
 
     gray = cv.cvtColor(img.copy(), cv.COLOR_BGR2GRAY)
-    charucoCorners, charucoIds, markerCorners, markerIds = charucoDetector.detectBoard(gray)
+    charucoCorners, charucoIds = detectCharucoCorners(gray, arucoDetector, charucoDetector)
 
     if charucoCorners is None:
-        # print("charucoCorners is None")
         return None, None
 
     charucoCorners = np.array([point[0] for point in charucoCorners])
+    charucoSize = (7,5)
 
-    objPoints = charucoDetector.getBoard().getChessboardCorners()
-    objPoints2D = [[point[0], point[1]] for point in objPoints]
+    objPoints = np.zeros((5*7,3), np.float32)
+    objPoints[:,:2] = 4.43 *np.mgrid[0:7,0:5].T.reshape(-1,2)
 
-    if len(charucoCorners) != len(objPoints2D):
-        # print("len(charucoCorners) = " + str(len(charucoCorners)) + "; expected = " + str(len(objPoints2D)))
+    if len(charucoCorners) != len(objPoints):
         return None, None
 
-    charucoSize = charucoDetector.getBoard().getChessboardSize()
-    img = cv.drawChessboardCorners(img, charucoSize, charucoCorners, False)
+    img = cv.drawChessboardCorners(img, charucoSize, charucoCorners, True)
     cv.imshow("camera", img)
 
     # Debug prints
@@ -538,14 +563,15 @@ def getCentersProjectionPlane(img, blobDetector, charucoDetector):
     # print(np.array(objPoints2D))
     # print("-------------------------")
 
-    H, _ = cv.findHomography(charucoCorners, np.array(objPoints2D))
+    H, _ = cv.findHomography(charucoCorners, np.array(objPoints))
 
-    img, mask, centersCam = detectAndDrawCirclesPatternFind(img, blobDetector)
+    img, mask, centersCam = detectAndDrawCirclesPatternFind(img, blobDetector, False)
 
     if centersCam is None:
         return None, None
 
     cv.imshow("camera", img)
+    # cv.imshow("mask", mask)
 
     centersConvertedHmg = []
     centersCamHmg = cv.convertPointsToHomogeneous(np.array(centersCam, np.float32))
@@ -555,11 +581,13 @@ def getCentersProjectionPlane(img, blobDetector, charucoDetector):
 
     centersConverted = cv.convertPointsFromHomogeneous(np.array(centersConvertedHmg))
     centersConverted = np.array([point[0] for point in centersConverted])
+    centersConverted = np.array([[point[0], point[1], 0] for point in centersConverted], np.float32)
+
     return centersConverted, centersCam
 
-def makeCirclePatternImages(size = (768, 1024), spaceBetween = 50, circleSize = 25):
+def makeCirclePatternImages(size = (768, 1024), spaceBetween = 50, circleSize = 15):
     patternImages = []
-    for itr in range(0, 5, 1):
+    for itr in range(0, 9, 1):
         start_x = 0
         start_y = 0
 
@@ -568,21 +596,33 @@ def makeCirclePatternImages(size = (768, 1024), spaceBetween = 50, circleSize = 
                 start_x += spaceBetween
                 start_y += spaceBetween
             case 1:
-                start_x = size[1] - 3 * 2 * spaceBetween
+                start_x = size[1] - 5 * 2 * spaceBetween
                 start_y += spaceBetween
             case 2:
-                start_x = size[1] - 3 * 2 * spaceBetween
-                start_y = size[0] - 5 * spaceBetween
+                start_x = size[1] - 5 * 2 * spaceBetween
+                start_y = size[0] - 7 * spaceBetween
             case 3:
                 start_x += spaceBetween
-                start_y = size[0] - 5 * spaceBetween
+                start_y = size[0] - 7 * spaceBetween
             case 4:
-                start_x = size[1]/2 - 3 * spaceBetween
-                start_y = size[0]/2 - 2 * spaceBetween
+                start_x = size[1]/4 - 2 * spaceBetween
+                start_y = size[0]/4 - spaceBetween
+            case 5:
+                start_x = size[1]*3/4 - 7 * spaceBetween
+                start_y = size[0]/4 - spaceBetween
+            case 6:
+                start_x = size[1]*3/4 - 7 * spaceBetween
+                start_y = size[0]*3/4 - 5 * spaceBetween
+            case 7:
+                start_x = size[1]/4 - 2 * spaceBetween
+                start_y = size[0]*3/4 - 5 * spaceBetween
+            case 8:
+                start_x = size[1]/2 - 5 * spaceBetween
+                start_y = size[0]/2 - 3 * spaceBetween
         
         img = np.zeros(size, dtype=np.uint8)
-        for i in range(0, 5, 1):
-            for j in range(0, 3, 1):
+        for i in range(0, 7, 1):
+            for j in range(0, 5, 1):
                 x = int(start_x + 2 * j * spaceBetween + (i % 2) * spaceBetween)
                 y = int(start_y + i * spaceBetween)
                 img = cv.circle(img, (x, y), circleSize, 255, -1)
@@ -590,89 +630,121 @@ def makeCirclePatternImages(size = (768, 1024), spaceBetween = 50, circleSize = 
         patternImages.append(img)
 
         cv.imwrite('./patternImages/patternImg' + str(itr) + ".png", img)
+    
+    # Debug prints
+    # print("patternImages:")
+    # print(patternImages)
+
     return patternImages
 
+# source: Joni
+def create_fullscreen_window(screen_id, window_name):
+    if screen_id >= len(screeninfo.get_monitors()):
+        return
+    screen = screeninfo.get_monitors()[screen_id]
+
+    cv.namedWindow(window_name, cv.WND_PROP_FULLSCREEN)
+    cv.moveWindow(window_name, screen.x - 1, screen.y - 1)
+    cv.setWindowProperty(window_name, cv.WND_PROP_FULLSCREEN, cv.WINDOW_FULLSCREEN)
+    return
+
+# source: Joni
+def detectCharucoCorners(gray, arucoDetector, charucoDetector):
+    corners, ids, rejectedImgPoints = arucoDetector.detectMarkers(gray)
+    corners, ids, rejectedImgPoints, recoveredIds = arucoDetector.refineDetectedMarkers(
+            image = gray,
+            board = charucoDetector.getBoard(),
+            detectedCorners = corners,
+            detectedIds = ids,
+            rejectedCorners = rejectedImgPoints,
+            # cameraMatrix = cam_int,
+            # distCoeffs = cam_dist
+            )   
+    # Only try to find CharucoBoard if we found markers
+    if ids is not None:
+        if len(ids) > 0:
+            # Get charuco corners and ids from detected aruco markers
+            charucoCorners, charucoIds, _, _ = charucoDetector.detectBoard(gray, markerCorners=corners, markerIds=ids)
+            # response, charuco_corners, charuco_ids = cv.aruco.interpolateCornersCharuco(
+            #         markerCorners=corners,
+            #         markerIds=ids,
+            #         image=gray,
+            #         board=charucoDetector.getBoard())
+            return charucoCorners, charucoIds
+    return np.array([]), np.array([])
+
 def main():
-    cap = cv.VideoCapture(2)
+    cap = cv.VideoCapture(0, apiPreference=cv.CAP_ANY, params=[cv.CAP_PROP_FRAME_WIDTH, 1920, cv.CAP_PROP_FRAME_HEIGHT, 1080])
 
     # Debug prints
     # succes, img = cap.read()
     # print("camera shape:")
     # print(img.shape)
 
-    boardPhoto = cv.imread("./Overige Images/board.jpg")
+    cameraMatrix, distCoeffs = loadCameraCalibration("cameraSchoolDepthDefect")
 
-    cameraMatrix, distCoeffs, _, _ = loadCameraCalibration("cameraSchoolDepthDefect")
+    patternImages = makeCirclePatternImages(size=(1080, 1920), spaceBetween=100, circleSize=30)
+    # patternImages = makeCirclePatternImages(size=(720, 1280), spaceBetween=50, circleSize=15)
 
-    dictionaries = findDict(cv.cvtColor(boardPhoto, cv.COLOR_BGR2GRAY))
-    dictionary = cv.aruco.getPredefinedDictionary(dictionaries[1])
-
-    boardSize = (8, 6) # aantal vakjes (hor, ver)
-    squareLength = 0.03 # in meter
-    markerLength = 0.015 # in meter
-    charucoBoard = cv.aruco.CharucoBoard(boardSize, squareLength, markerLength, dictionary)
-
-    # saveCharucoBoard(charucoBoard, (1920, 1080), "board_img.jpg")
-
-    charucoDetector = cv.aruco.CharucoDetector(charucoBoard)
-
-    # patternImg, objPoints, centersProj = makeInitCirclePattern(charucoDetector)
-    patternImages = makeCirclePatternImages()
-
-    # method = askCirclePatternDetectionMethod()
-
+    charucoDetector = initCharucoDetector()
     blobDetector = initBlobDetector()
+    arucoDetector = initArucoDetector()
 
     # ----------------------------------------------------------------------------------------------------------------------------------
 
     # NIEUWE CODE (MET UITLEG VAN JONI)
 
-    print("Take 4 images of every pattern, there are 5 different patterns in total.")
+    print("Take at least 4 images of every pattern, there are 5 different patterns in total.")
+
+    print(screeninfo.get_monitors())
+    create_fullscreen_window(1, "patternImg")
 
     allCentersProjPlane = []
     allCentersProj = []
+    allCentersCam = []
 
     patternImgIndex = 0
     while True:
-        # Change patternImg every 4 times data has been collected
-        if len(allCentersProj) % 4 == 0 and len(allCentersProj) != 0:
-            patternImgIndex += 1
-
-        patternImg = patternImages[patternImgIndex]
+        patternImg = patternImages[patternImgIndex].copy()
         cv.imshow("patternImg", patternImg)
 
-        _, img = cap.read()
+        succes, img = cap.read()
+        if not succes:
+            continue
+
         img = cv.undistort(img, cameraMatrix, distCoeffs)
 
-        centersProjPlane, _ = getCentersProjectionPlane(img, blobDetector, charucoDetector)
-        _, _, centersProj = detectAndDrawCirclesPatternFind(patternImg, blobDetector)
+        centersProjPlane, centersCam = getCentersProjectionPlane(img.copy(), blobDetector, charucoDetector, arucoDetector)
+        _, _, centersProj = detectAndDrawCirclesPatternFind(patternImg, blobDetector, True)
 
         key = cv.waitKey(1)
 
-        if key == 13 and centersProjPlane is not None:
-            centersProjPlane = np.array([[point[0], point[1], 0] for point in centersProjPlane], np.float32)
-            allCentersProjPlane.append(centersProjPlane)
+        if key == 13 and centersProjPlane is not None: # ENTER
+            cv.imwrite("./projCalibrationData/School/rawData/img" + str(len(allCentersProjPlane)) + ".png", img)
 
+            allCentersProjPlane.append(centersProjPlane)
             allCentersProj.append(centersProj)
+            allCentersCam.append(centersCam)
 
             print("Images collected: " + str(len(allCentersProjPlane)))
-        elif key == 99 and len(allCentersProjPlane) >= 20:
+        elif key == 110: # n
+            if patternImgIndex < len(patternImages) - 1:
+                patternImgIndex += 1
+            else:
+                patternImgIndex = 0
+        elif key == 99 and len(allCentersProjPlane) >= 20: # c
             break
 
-
-    # Convert to 3D points to use as objPoints
-    
-
     # Debug prints
-    print("allCentersProjPlane:")
-    print(allCentersProjPlane)
-    print("--------------------------")
-    print("allCentersProj:")
-    print(allCentersProj)
-    print("--------------------------")
+    # print("allCentersProjPlane:")
+    # print(allCentersProjPlane)
+    # print("--------------------------")
+    # print("allCentersProj:")
+    # print(allCentersProj)
+    # print("--------------------------")
 
 
-    patternImgSize = (patternImg.shape[1], patternImg.shape[0])
+    patternImgSize = (patternImg.shape[0], patternImg.shape[1])
     retval, projMatrix, projDistCoeffs, _, _ = cv.calibrateCamera(allCentersProjPlane, allCentersProj, patternImgSize, None, None)
     
     if not retval:
@@ -683,8 +755,8 @@ def main():
     saveProjCalibration("projSchool", projMatrix, projDistCoeffs)
 
     # Debug prints
-    print("centersProjPlane:")
-    print(centersProjPlane)
+    print("reprojectionError:")
+    print(retval)
     print("-------------------------------")
     print("projMatrix:")
     print(projMatrix)
@@ -692,44 +764,6 @@ def main():
     print("projDistCoeffs:")
     print(projDistCoeffs)
     print("-------------------------------")
-
-    print("Put your camera in the set position to calibrate the extrinsic parameters.")
-    print("Press ENTER when you have a good image...")
-
-    allCentersProjPlane = []
-    allCentersProj = []
-    allCentersCam = []
-
-    patternImgIndex = 0
-
-    while True:
-        if len(allCentersProj) % 4 == 0 and len(allCentersProj) != 0:
-            patternImgIndex += 1
-
-        patternImg = patternImages[patternImgIndex]
-        cv.imshow("patternImg", patternImg)
-
-        _, img = cap.read()
-        img = cv.undistort(img, cameraMatrix, distCoeffs)
-
-        centersProjPlane, centersCam = getCentersProjectionPlane(img, blobDetector, charucoDetector)
-        _, _, centersProj = detectAndDrawCirclesPatternFind(patternImg, blobDetector)
-
-        key = cv.waitKey(1)
-
-        if key == 13 and centersProjPlane is not None:
-            centersProjPlane = np.array([[point[0], point[1], 0] for point in centersProjPlane], np.float32)
-            allCentersProjPlane.append(centersProjPlane)
-
-            allCentersProj.append(centersProj)
-
-            allCentersCam.append(centersCam)
-
-            print("Images collected: " + str(len(allCentersProjPlane)))
-        elif key == 99 and len(allCentersProjPlane) >= 15:
-            break
-        else:
-            "centersProjPlane = None"
 
     retval, _, _, _, _, R, T, E, F = cv.stereoCalibrate(allCentersProjPlane, allCentersCam, allCentersProj, cameraMatrix, distCoeffs, projMatrix, projDistCoeffs, patternImgSize)
 
@@ -741,14 +775,17 @@ def main():
     transfMat = constructTransformationMatrix(R, T)
 
     # Debug prints
+    print("reprojectionError:")
+    print(retval)
+    print("-------------------------------")
     print("essMat:")
     print(E)
+    print("-------------------------------")
     print("transfMat:")
     print(transfMat)
+    print("-------------------------------")
 
     saveEssAndTransfMat("essAndTransfMatCamProjSchool", E, transfMat)
-
-    # visualizeCamProj(R, T, centersCam, centersProj, cameraMatrix, projMatrix)
 
 if __name__ == "__main__":
     main()
