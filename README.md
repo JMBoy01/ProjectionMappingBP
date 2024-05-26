@@ -36,3 +36,13 @@
 | 14-05-2024 | Meer code geschreven om kalibratie werkende te krijgen. Gesproken met Joni over mogelijk fouten in de code. |
 | 15-05-2024 | Meer code geschreven om kalibratie werkende te krijgen. Gesproken met Joni over mogelijk fouten in de code. |
 | 16-05-2024 | Validatie dataset gebruikt om code te controleren, fouten eruit gehaald samen met Joni via chat. 2de versie van de camera kalibratie code geschreven die beter werkt. Andere webcam gefixed die een hogere resolutie heeft. Meer code geschreven om kalibratie werkende te krijgen. Gesproken met Joni over mogelijk fouten in de code. |
+| 17-05-2024 | Calibratie code fixen voor eigen setup. |
+| 18-05-2024 | Calibratie code fixen voor eigen setup. Paper + poster maken. |
+| 19-05-2024 | Paper + poster maken. |
+| 20-05-2024 | Paper + poster maken. |
+| 21-05-2024 | Paper maken + poster presentatie. |
+| 22-05-2024 | Paper + poster feedback verwerken. |
+| 23-05-2024 | Paper + poster feedback verwerken. |
+| 24-05-2024 | Paper feedback verwerken. |
+| 25-05-2024 | Paper feedback verwerken + presentatie gemaakt. |
+| 26-05-2024 | Paper feedback verwerken, presentatie gemaakt en filmpje gemaakt om eindresultaat te laten zien. |

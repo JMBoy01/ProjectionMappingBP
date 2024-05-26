@@ -165,7 +165,7 @@ def main():
     print(distCoeffs)
     print("-----------------------------")
 
-    saveCameraCalibration("cameraSchoolDepthDefect", cameraMatrix, distCoeffs)
+    saveCameraCalibration("cameraHome", cameraMatrix, distCoeffs)
 
 if __name__ == "__main__":
     main()

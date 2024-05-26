@@ -681,7 +681,7 @@ def main():
     # print("camera shape:")
     # print(img.shape)
 
-    cameraMatrix, distCoeffs = loadCameraCalibration("cameraSchoolDepthDefect")
+    cameraMatrix, distCoeffs = loadCameraCalibration("cameraHome")
 
     patternImages = makeCirclePatternImages(size=(1080, 1920), spaceBetween=100, circleSize=30)
     # patternImages = makeCirclePatternImages(size=(720, 1280), spaceBetween=50, circleSize=15)
@@ -720,7 +720,7 @@ def main():
         key = cv.waitKey(1)
 
         if key == 13 and centersProjPlane is not None: # ENTER
-            cv.imwrite("./projCalibrationData/School/rawData/img" + str(len(allCentersProjPlane)) + ".png", img)
+            cv.imwrite("./projCalibrationData/Home/rawData/img" + str(len(allCentersProjPlane)) + ".png", img)
 
             allCentersProjPlane.append(centersProjPlane)
             allCentersProj.append(centersProj)
@@ -752,7 +752,7 @@ def main():
         print("Exiting program...")
         exit(0)
 
-    saveProjCalibration("projSchool", projMatrix, projDistCoeffs)
+    saveProjCalibration("projHome", projMatrix, projDistCoeffs)
 
     # Debug prints
     print("reprojectionError:")
@@ -785,7 +785,7 @@ def main():
     print(transfMat)
     print("-------------------------------")
 
-    saveEssAndTransfMat("essAndTransfMatCamProjSchool", E, transfMat)
+    saveEssAndTransfMat("essAndTransfMatCamProjHome", E, transfMat)
 
 if __name__ == "__main__":
     main()

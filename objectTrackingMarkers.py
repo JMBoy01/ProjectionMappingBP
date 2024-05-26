@@ -586,7 +586,7 @@ def main():
     serverAddressPortTransfMat = ("127.0.0.1", 6969)
     serverAddressPortProjPos = ("127.0.0.1", 6970)
 
-    sendTransfMatToUnity(sock, serverAddressPortProjPos, transfMatCamProj)
+    sendTransfMatToUnity(sock, serverAddressPortProjPos, transfMatCamProj/100)
 
     board = initArucoBoard(objPoints, dictionary)
 
