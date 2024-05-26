@@ -543,8 +543,13 @@ def getCentersProjectionPlane(img, blobDetector, charucoDetector, arucoDetector)
     charucoCorners = np.array([point[0] for point in charucoCorners])
     charucoSize = (7,5)
 
-    objPoints = np.zeros((5*7,3), np.float32)
-    objPoints[:,:2] = 4.43 *np.mgrid[0:7,0:5].T.reshape(-1,2)
+    squareSize = 0.0285 # in meter
+    objPoints = []
+    for i in range(0, 5, 1):
+        for j in range(0, 7, 1):
+            objPoints.append([j*squareSize, i*squareSize, 0])
+    # objPoints = np.zeros((5*7,3), np.float32)
+    # objPoints[:,:2] = 4.43 *np.mgrid[0:7,0:5].T.reshape(-1,2)
 
     if len(charucoCorners) != len(objPoints):
         return None, None

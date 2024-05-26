@@ -10,6 +10,13 @@ def loadCameraCalibration(filename):
     fs.release()
     return cameraMatrix, distCoeffs
 
+def loadProjectorCalibration(filename):
+    fs = cv.FileStorage(filename, cv.FILE_STORAGE_READ)
+    projMatrix = fs.getNode("projMatrix").mat()
+    projDistCoeffs = fs.getNode("projDistCoeffs").mat()
+    fs.release()
+    return projMatrix, projDistCoeffs
+
 def loadObjectPoints(filename):
     fs = cv.FileStorage(filename, cv.FILE_STORAGE_READ)
     
@@ -579,14 +586,20 @@ def main():
     cameraMatrix, distCoeffs = loadCameraCalibration("cameraHome")
     objPoints = loadObjectPoints("objectPoints")
     essMat, transfMatCamProj = loadExtrinsic("essAndTransfMatCamProjHome")
+    projMatrix, projDistCoeffs = loadProjectorCalibration("projHome")
 
     cap = cv.VideoCapture(0, apiPreference=cv.CAP_ANY, params=[cv.CAP_PROP_FRAME_WIDTH, 1920, cv.CAP_PROP_FRAME_HEIGHT, 1080])
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     serverAddressPortTransfMat = ("127.0.0.1", 6969)
     serverAddressPortProjPos = ("127.0.0.1", 6970)
+    serverAddressPortProjIntrinsics = ("127.0.0.1", 6971)
 
-    sendTransfMatToUnity(sock, serverAddressPortProjPos, transfMatCamProj/100)
+    transfMatCamProj = convertTransfMatToUnityCoordSys(transfMatCamProj)
+    transfMatCamProj = np.linalg.inv(transfMatCamProj)
+    sendTransfMatToUnity(sock, serverAddressPortProjPos, transfMatCamProj)
+
+    sendTransfMatToUnity(sock, serverAddressPortProjIntrinsics, projMatrix)
 
     board = initArucoBoard(objPoints, dictionary)
 
